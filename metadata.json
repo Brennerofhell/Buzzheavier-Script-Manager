@@ -1,0 +1,1 @@
+{"name":"Buzzheavier Script Manager","description":"An interactive utility to generate, customize, and install high-performance Tampermonkey userscripts for Buzzheavier, featuring direct link extraction, video/audio streaming, dark mode, and batch link processing.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
