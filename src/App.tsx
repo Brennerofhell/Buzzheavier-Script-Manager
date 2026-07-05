@@ -1029,7 +1029,7 @@ export default function App() {
                   </div>
                 ) : (
                   /* Liste der parsed Links */
-                  <div className="flex flex-col gap-3 overflow-y-auto max-h-[500px] pr-1">
+                  <div className="flex flex-col gap-3 overflow-y-auto max-h-[500px] pr-1 stable-scrollbar">
                     {links.map((link, idx) => {
                       const resolved = resolvedLinksInfo[link.id];
                       const rawUrl = resolved?.directUrl || link.directUrl;
