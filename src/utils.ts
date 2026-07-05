@@ -214,18 +214,49 @@ export function generateUserscript(config: ScriptConfig): string {
   });
 
   // Extrahiert den Direct-Link für Motrix
-  function extractDirectLink(id) {
+  async function extractDirectLink(id) {
     let token = "";
     let actionUrl = "https://buzzheavier.com/d/" + id;
     let foundUrl = "";
 
+    // A. HTMX hx-get Scraper (Sucht nach dem echten Download-Link via hx-get Attribut)
+    try {
+      const hxElement = document.querySelector('[hx-get*="/download"]') || 
+                        document.querySelector('[hx-get*="/d/"]') ||
+                        document.querySelector('[hx-get]');
+      if (hxElement) {
+        const hxGet = hxElement.getAttribute('hx-get');
+        if (hxGet) {
+          const fetchUrl = hxGet.startsWith('http') ? hxGet : window.location.origin + hxGet;
+          console.log("[Buzzheavier Helper] HTMX hx-get gefunden: " + fetchUrl + ". Hole Direktlink...");
+          
+          const res = await fetch(fetchUrl, {
+            headers: {
+              "HX-Request": "true",
+              "HX-Current-URL": window.location.href
+            }
+          });
+          
+          const redirectUrl = res.headers.get("HX-Redirect");
+          if (redirectUrl) {
+            console.log("[Buzzheavier Helper] HX-Redirect erfolgreich abgefangen: " + redirectUrl);
+            foundUrl = redirectUrl;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[Buzzheavier Helper] Fehler beim Laden des HTMX-Redirects:", e);
+    }
+
     // 1. Durchsuche alle Links (a) nach der Direct URL mit Token
-    const allLinks = Array.from(document.querySelectorAll('a'));
-    for (const a of allLinks) {
-      const href = a.getAttribute('href') || '';
-      if ((href.includes('/d/') || href.includes('buzzheavier.com')) && href.includes('v=')) {
-        foundUrl = href;
-        break;
+    if (!foundUrl) {
+      const allLinks = Array.from(document.querySelectorAll('a'));
+      for (const a of allLinks) {
+        const href = a.getAttribute('href') || '';
+        if ((href.includes('/d/') || href.includes('buzzheavier.com')) && href.includes('v=')) {
+          foundUrl = href;
+          break;
+        }
       }
     }
 
