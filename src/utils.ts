@@ -21,13 +21,13 @@ export function parseBuzzheavierUrl(urlStr: string): BuzzLink {
     let id = "";
 
     // 1. If it contains a URL structure
-    if (trimmed.includes("buzzheavier.com")) {
+    if (trimmed.includes("buzzheavier.com") || trimmed.includes("bzzhr.to")) {
       // Clean up protocol/www
       const cleanUrl = trimmed.replace(/^(https?:\/\/)?(www\.)?(ts\.)?/, "");
       const pathParts = cleanUrl.split("/");
       
-      // Look for the segment after buzzheavier.com
-      const domainIndex = pathParts.findIndex(part => part.includes("buzzheavier.com"));
+      // Look for the segment after the domain name
+      const domainIndex = pathParts.findIndex(part => part.includes("buzzheavier.com") || part.includes("bzzhr.to"));
       if (domainIndex !== -1 && domainIndex + 1 < pathParts.length) {
         let nextPart = pathParts[domainIndex + 1];
         

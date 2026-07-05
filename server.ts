@@ -21,7 +21,7 @@ async function startServer() {
       const trimmed = url.trim();
       const cleanUrl = trimmed.replace(/^(https?:\/\/)?(www\.)?(ts\.)?/, "");
       const pathParts = cleanUrl.split("/");
-      const domainIndex = pathParts.findIndex(part => part.includes("buzzheavier.com"));
+      const domainIndex = pathParts.findIndex(part => part.includes("buzzheavier.com") || part.includes("bzzhr.to"));
       
       if (domainIndex !== -1 && domainIndex + 1 < pathParts.length) {
         let nextPart = pathParts[domainIndex + 1];
