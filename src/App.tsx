@@ -109,6 +109,7 @@ export default function App() {
   // Online Token Resolve States
   const [resolvingIds, setResolvingIds] = useState<string[]>([]);
   const [resolvedLinksInfo, setResolvedLinksInfo] = useState<Record<string, { directUrl: string; filename: string; size: string }>>({});
+  const [isHelperActive, setIsHelperActive] = useState(false);
 
   // File Uploader States
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -571,15 +572,32 @@ export default function App() {
     if (unresolved.length > 0) {
       const nextLink = unresolved[0];
       const timer = setTimeout(() => {
-        resolveLinkOnline(nextLink.id, nextLink.originalUrl);
+        if (isHelperActive) {
+          // Hintergrund-Bypass über lokale Tampermonkey-Erweiterung
+          setResolvingIds(prev => [...prev, nextLink.id]);
+          window.postMessage({
+            type: "REQUEST_BUZZ_RESOLVE",
+            id: nextLink.id,
+            url: nextLink.originalUrl
+          }, "*");
+          // Timeout um Resolving-Status zurückzusetzen, falls Script blockiert/fehlt
+          setTimeout(() => {
+            setResolvingIds(prev => prev.filter(item => item !== nextLink.id));
+          }, 8000);
+        } else {
+          resolveLinkOnline(nextLink.id, nextLink.originalUrl);
+        }
       }, 400); // Kleine Verzögerung zur Server-Schonung
       return () => clearTimeout(timer);
     }
-  }, [links, resolvedLinksInfo, resolvingIds, activeTab]);
+  }, [links, resolvedLinksInfo, resolvingIds, activeTab, isHelperActive]);
 
   // Auf Nachrichten vom Tampermonkey-Userscript lauschen
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "BUZZ_HELPER_READY") {
+        setIsHelperActive(true);
+      }
       if (event.data && event.data.type === "BUZZ_RESOLVED") {
         const { id, directUrl, filename, size } = event.data;
         if (id) {
@@ -592,6 +610,7 @@ export default function App() {
               isFallback: false
             }
           }));
+          setResolvingIds(prev => prev.filter(item => item !== id));
           triggerNotification(`Sicherheitstoken für ${filename || id} erhalten!`);
         }
       }
@@ -971,6 +990,18 @@ export default function App() {
                     <p className="text-xs text-slate-400 mt-1">
                       Kopiere die Direktlinks direkt in die Zwischenablage für Motrix.
                     </p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-[11px] text-slate-400">Tampermonkey-Bypass:</span>
+                      {isHelperActive ? (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          AKTIV (Hintergrund-Bypass)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20" title="Installiere das Tampermonkey-Skript (Reiter 'Tampermonkey Script'), um alle Links automatisch im Hintergrund aufzulösen.">
+                          INAKTIV (Kein Hintergrund-Bypass)
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   {links.length > 0 && (

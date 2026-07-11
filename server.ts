@@ -86,15 +86,42 @@ async function startServer() {
       let filename = "";
       let size = "Unbekannt";
 
-      // 1. Look for direct links in HTML with ts.buzzheavier.com and token
-      const tokenUrlRegex = /https?:\/\/(?:ts\.)?buzzheavier\.com\/d\/[a-zA-Z0-9_-]+\?v=[a-zA-Z0-9_=-]+/i;
-      const matchTokenUrl = html.match(tokenUrlRegex);
-      if (matchTokenUrl) {
-        directUrl = matchTokenUrl[0];
+      // Try HTMX redirect extraction first (official mechanism found by subagent)
+      const hxGetMatch = html.match(/hx-get=["']([^"']+)["']/i);
+      const copyMatch = html.match(/copyDownloadLink\(["']([^"']+)["']\)/i);
+      let hxPath = hxGetMatch ? hxGetMatch[1] : (copyMatch ? copyMatch[1] : "");
+
+      if (hxPath) {
+        try {
+          const downloadRes = await fetch(`https://buzzheavier.com${hxPath}`, {
+            headers: {
+              "HX-Request": "true",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "*/*"
+            },
+            redirect: "manual"
+          });
+          const redirectedLink = downloadRes.headers.get("hx-redirect");
+          if (redirectedLink) {
+            directUrl = redirectedLink;
+          }
+        } catch (err) {
+          console.error("Failed to perform HTMX download subrequest:", err);
+        }
       }
 
-      // 2. Look for /d/ paths with token
+      // Fallback parsers if HTMX subrequest didn't succeed or didn't yield a direct link
       if (!directUrl) {
+        // 1. Look for direct links in HTML with ts.buzzheavier.com and token
+        const tokenUrlRegex = /https?:\/\/(?:ts\.)?buzzheavier\.com\/d\/[a-zA-Z0-9_-]+\?v=[a-zA-Z0-9_=-]+/i;
+        const matchTokenUrl = html.match(tokenUrlRegex);
+        if (matchTokenUrl) {
+          directUrl = matchTokenUrl[0];
+        }
+      }
+
+      if (!directUrl) {
+        // 2. Look for /d/ paths with token
         const relativeTokenUrlRegex = /\/d\/[a-zA-Z0-9_-]+\?v=[a-zA-Z0-9_=-]+/i;
         const matchRelative = html.match(relativeTokenUrlRegex);
         if (matchRelative) {
@@ -102,9 +129,8 @@ async function startServer() {
         }
       }
 
-      // 3. Search for a form with name "v" input and extract action and value
       if (!directUrl) {
-        // Find the value of input name="v"
+        // 3. Search for a form with name "v" input and extract action and value
         const vMatch = html.match(/name=["']v["']\s+value=["']([^"']+)["']/i) || 
                        html.match(/value=["']([^"']+)["']\s+name=["']v["']/i);
         const actionMatch = html.match(/action=["']([^"']+)["']/i);
@@ -119,8 +145,8 @@ async function startServer() {
         }
       }
 
-      // 4. Fallback if still nothing but we have form action
       if (!directUrl) {
+        // 4. Fallback if still nothing but we have form action
         const actionMatch = html.match(/action=["']\/d\/([^"']+)["']/i);
         if (actionMatch && actionMatch[1]) {
           directUrl = `https://buzzheavier.com/d/${actionMatch[1]}`;

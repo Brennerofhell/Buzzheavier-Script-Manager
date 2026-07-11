@@ -131,9 +131,13 @@ export function generateUserscript(config: ScriptConfig): string {
 // @author       Buzzheavier Script Builder
 // @match        *://buzzheavier.com/*
 // @match        *://*.buzzheavier.com/*
+// @match        http://localhost:*/*
+// @match        http://127.0.0.1:*/*
 // @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
+// @connect      buzzheavier.com
+// @connect      ts.buzzheavier.com
 // @run-at       document-start
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=buzzheavier.com
 // @updateURL    https://buzzheavier.com/
@@ -142,6 +146,121 @@ export function generateUserscript(config: ScriptConfig): string {
 
 (function() {
   'use strict';
+
+  if (window.location.hostname !== 'buzzheavier.com' && !window.location.hostname.endsWith('.buzzheavier.com')) {
+    // Aktiv auf localhost / Steuerungsseite
+    console.log("[Buzzheavier Helper] Aktiv auf Steuerungsseite: " + window.location.origin);
+    
+    // Melde Bereitschaft an die App
+    setInterval(() => {
+      window.postMessage({ type: "BUZZ_HELPER_READY" }, "*");
+    }, 1000);
+
+    // Auf Anfragen zur Hintergrund-Auflösung lauschen
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "REQUEST_BUZZ_RESOLVE") {
+        const { id, url } = event.data;
+        if (id) {
+          console.log("[Buzzheavier Helper] Hintergrund-Auflösung gestartet für ID: " + id);
+          const targetUrl = url || "https://buzzheavier.com/f/" + id;
+          
+          GM_xmlhttpRequest({
+            method: "GET",
+            url: targetUrl,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+            },
+            onload: function(response) {
+              if (response.status !== 200) {
+                console.error("[Buzzheavier Helper] Fehler beim Laden der Landingpage: Status " + response.status);
+                return;
+              }
+              const html = response.responseText;
+              
+              // Details extrahieren
+              let filename = "";
+              const h1Match = html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i) || 
+                              html.match(/<h2[^>]*>([\\s\\S]*?)<\\/h2>/i) ||
+                              html.match(/<title>([\\s\\S]*?)<\\/title>/i);
+              if (h1Match) {
+                filename = h1Match[1].replace(/<[^>]*>/g, "").replace(/\\s*-\\s*Buzzheavier/i, "").trim();
+              }
+              let size = "Unbekannt";
+              const sizeMatch = html.match(/(\\d+(?:\\.\\d+)?\\s*(?:KB|MB|GB|B))/i);
+              if (sizeMatch) size = sizeMatch[1];
+              
+              const hxGetMatch = html.match(/hx-get=["']([^"']+)["']/i);
+              const copyMatch = html.match(/copyDownloadLink\\(["']([^"']+)["']\\)/i);
+              const hxPath = hxGetMatch ? hxGetMatch[1] : (copyMatch ? copyMatch[1] : "");
+              
+              if (hxPath) {
+                const fetchUrl = hxPath.startsWith("http") ? hxPath : "https://buzzheavier.com" + hxPath;
+                GM_xmlhttpRequest({
+                  method: "GET",
+                  url: fetchUrl,
+                  headers: {
+                    "HX-Request": "true",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                  },
+                  onload: function(subRes) {
+                    const headersStr = subRes.responseHeaders || "";
+                    const headers = {};
+                    headersStr.split("\\r\\n").forEach(line => {
+                      const parts = line.split(": ");
+                      if (parts[0]) {
+                        headers[parts[0].toLowerCase()] = parts.slice(1).join(": ");
+                      }
+                    });
+                    
+                    let directUrl = headers["hx-redirect"] || headers["hx-refresh"];
+                    if (!directUrl && subRes.responseText) {
+                      try {
+                        const parsed = JSON.parse(subRes.responseText);
+                        if (parsed.redirect) directUrl = parsed.redirect;
+                      } catch(e) {}
+                    }
+                    
+                    if (directUrl) {
+                      if (directUrl.includes("v=") && !directUrl.includes("ts.buzzheavier.com")) {
+                        directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
+                      }
+                      window.postMessage({
+                        type: "BUZZ_RESOLVED",
+                        id: id,
+                        directUrl: directUrl,
+                        filename: filename || ("buzz_file_" + id),
+                        size: size
+                      }, "*");
+                    } else {
+                      console.error("[Buzzheavier Helper] Keine Weiterleitung in Headern gefunden.");
+                    }
+                  }
+                });
+              } else {
+                const tokenUrlRegex = /https?:\\/\\/(?:ts\\.)?buzzheavier\\.com\\/d\\/[a-zA-Z0-9_-]+\\?v=[a-zA-Z0-9_=-]+/i;
+                const matchTokenUrl = html.match(tokenUrlRegex);
+                if (matchTokenUrl) {
+                  let directUrl = matchTokenUrl[0];
+                  if (!directUrl.includes("ts.buzzheavier.com")) {
+                    directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
+                  }
+                  window.postMessage({
+                    type: "BUZZ_RESOLVED",
+                    id: id,
+                    directUrl: directUrl,
+                    filename: filename || ("buzz_file_" + id),
+                    size: size
+                  }, "*");
+                }
+              }
+            }
+          });
+        }
+      }
+    });
+    return;
+  }
 
   // Konfigurationen vom ${dateStr}
   const CONFIG = {
