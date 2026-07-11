@@ -136,6 +136,7 @@ export function generateUserscript(config: ScriptConfig): string {
 // @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      buzzheavier.com
 // @connect      ts.buzzheavier.com
 // @run-at       document-start
@@ -147,17 +148,19 @@ export function generateUserscript(config: ScriptConfig): string {
 (function() {
   'use strict';
 
+  const targetWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
   if (window.location.hostname !== 'buzzheavier.com' && !window.location.hostname.endsWith('.buzzheavier.com')) {
     // Aktiv auf localhost / Steuerungsseite
     console.log("[Buzzheavier Helper] Aktiv auf Steuerungsseite: " + window.location.origin);
     
     // Melde Bereitschaft an die App
     setInterval(() => {
-      window.postMessage({ type: "BUZZ_HELPER_READY" }, "*");
+      targetWin.postMessage({ type: "BUZZ_HELPER_READY" }, "*");
     }, 1000);
 
     // Auf Anfragen zur Hintergrund-Auflösung lauschen
-    window.addEventListener("message", (event) => {
+    targetWin.addEventListener("message", (event) => {
       if (event.data && event.data.type === "REQUEST_BUZZ_RESOLVE") {
         const { id, url } = event.data;
         if (id) {
@@ -225,7 +228,7 @@ export function generateUserscript(config: ScriptConfig): string {
                       if (directUrl.includes("v=") && !directUrl.includes("ts.buzzheavier.com")) {
                         directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
                       }
-                      window.postMessage({
+                      targetWin.postMessage({
                         type: "BUZZ_RESOLVED",
                         id: id,
                         directUrl: directUrl,
@@ -245,7 +248,7 @@ export function generateUserscript(config: ScriptConfig): string {
                   if (!directUrl.includes("ts.buzzheavier.com")) {
                     directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
                   }
-                  window.postMessage({
+                  targetWin.postMessage({
                     type: "BUZZ_RESOLVED",
                     id: id,
                     directUrl: directUrl,
