@@ -339,7 +339,10 @@ export function generateUserscript(config: ScriptConfig): string {
     embedPlayer: ${config.embedPlayer},
     customDarkTheme: ${config.customDarkTheme},
     hideAdblockWarning: ${config.hideAdblockWarning},
-    showNotification: ${config.showNotification}
+    showNotification: ${config.showNotification},
+    sendToMotrix: ${config.sendToMotrix},
+    motrixRpcUrl: "${config.motrixRpcUrl || 'http://localhost:16800/jsonrpc'}",
+    motrixSecret: "${config.motrixSecret || ''}"
   };
 
   // Hilfsfunktion für Notifications
@@ -352,6 +355,68 @@ export function generateUserscript(config: ScriptConfig): string {
       });
     } else {
       console.log("[Buzzheavier Helper] " + msg);
+    }
+  }
+
+  // Hilfsfunktion zum Senden an Motrix Next (Aria2 JSON-RPC)
+  function sendToMotrixRpc(url, filename) {
+    const uris = [url];
+    const options = {};
+    if (filename) {
+      options["out"] = filename;
+    }
+    const params = [];
+    if (CONFIG.motrixSecret) {
+      params.push("token:" + CONFIG.motrixSecret);
+    }
+    params.push(uris);
+    params.push(options);
+
+    const payload = {
+      jsonrpc: "2.0",
+      id: "buzz-userscript-" + Date.now(),
+      method: "aria2.addUri",
+      params: params
+    };
+
+    if (typeof GM_xmlhttpRequest !== 'undefined') {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: CONFIG.motrixRpcUrl,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data: JSON.stringify(payload),
+        onload: function(res) {
+          try {
+            const r = JSON.parse(res.responseText);
+            if (r.error) {
+              notify("❌ Motrix Fehler: " + (r.error.message || "Aria2 RPC Error"));
+            } else {
+              notify("🚀 Erfolgreich an Motrix gesendet!");
+            }
+          } catch(e) {
+            notify("🚀 An Motrix gesendet!");
+          }
+        },
+        onerror: function(err) {
+          notify("❌ Motrix Verbindung fehlgeschlagen! Ist Motrix offen?");
+        }
+      });
+    } else {
+      fetch(CONFIG.motrixRpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(r => {
+        if (r.error) notify("❌ Motrix Fehler: " + r.error.message);
+        else notify("🚀 Erfolgreich an Motrix gesendet!");
+      })
+      .catch(() => {
+        notify("❌ Motrix Verbindung fehlgeschlagen!");
+      });
     }
   }
 
@@ -525,6 +590,15 @@ export function generateUserscript(config: ScriptConfig): string {
       }
     }
 
+    // C2. Automatisch an Motrix Next senden
+    if (CONFIG.sendToMotrix) {
+      try {
+        sendToMotrixRpc(finalDirectUrl, fn);
+      } catch (e) {
+        console.error("Auto-send to Motrix failed:", e);
+      }
+    }
+
     // Rückmeldung an die Converter-Webseite senden (falls vorhanden)
     if (targetWin.opener) {
       try {
@@ -616,13 +690,18 @@ export function generateUserscript(config: ScriptConfig): string {
       <p style="font-size: 11px; color: #cbd5e1; margin: 0 0 10px 0; line-height: 1.4;">
         Dieser Link enthält das aktive Sicherheitstoken und kann direkt in <strong>Motrix</strong>, <strong>JDownloader</strong> oder <strong>IDM</strong> eingefügt werden.
       </p>
-      <input type="text" readonly value="\${directUrl}" style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#38bdf8; padding:6px 10px; font-size:10px; font-family:monospace; margin-bottom:12px; outline:none;" />
-      <div style="display:flex; gap:8px;">
-        <button id="btn-copy-helper" style="flex:1; background:#0284c7; hover:background:#0369a1; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px;">
-          📋 Link kopieren
-        </button>
-        <a href="\${directUrl}" style="background:#1e293b; border:1px solid #475569; color:white; border-radius:6px; padding:8px; font-size:11px; text-decoration:none; text-align:center; font-weight:600; flex:1;">
-          📥 Download
+      <input type="text" readonly value="\\\${directUrl}" style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#38bdf8; padding:6px 10px; font-size:10px; font-family:monospace; margin-bottom:12px; outline:none;" />
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; gap:8px;">
+          <button id="btn-copy-helper" style="flex:1; background:#0284c7; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px;">
+            📋 Kopieren
+          </button>
+          <button id="btn-motrix-helper" style="flex:1; background:#8b5cf6; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px;">
+            🚀 Motrix Next
+          </button>
+        </div>
+        <a href="\\\${directUrl}" style="width:100%; background:#1e293b; border:1px solid #475569; color:white; border-radius:6px; padding:8px; font-size:11px; text-decoration:none; text-align:center; font-weight:600; display:block;">
+          📥 Direkt downloaden
         </a>
       </div>
     \`;
@@ -649,6 +728,24 @@ export function generateUserscript(config: ScriptConfig): string {
         copyBtn.style.background = "#0284c7";
       }, 2000);
     });
+
+    const motrixBtn = document.getElementById('btn-motrix-helper');
+    if (motrixBtn) {
+      motrixBtn.addEventListener('click', () => {
+        let fn = "";
+        const h1 = document.querySelector('h1') || document.querySelector('h2') || document.querySelector('title');
+        if (h1) fn = h1.textContent.replace(/\\s*-\\s*Buzzheavier/i, "").trim();
+        if (!fn) fn = "buzz_file";
+        
+        sendToMotrixRpc(directUrl, fn);
+        motrixBtn.innerText = "🚀 Gesendet!";
+        motrixBtn.style.background = "#22c55e";
+        setTimeout(() => {
+          motrixBtn.innerText = "🚀 Motrix Next";
+          motrixBtn.style.background = "#8b5cf6";
+        }, 2000);
+      });
+    }
   }
 
   // Premium Dark Theme Injector

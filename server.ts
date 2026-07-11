@@ -196,6 +196,63 @@ async function startServer() {
     }
   });
 
+  // API route to send download task to local Motrix instance via JSON-RPC
+  app.post("/api/motrix/add", async (req, res) => {
+    const { directUrl, filename, rpcUrl, secret } = req.body;
+    
+    if (!directUrl) {
+      return res.status(400).json({ error: "directUrl ist erforderlich." });
+    }
+
+    const targetRpcUrl = rpcUrl || "http://localhost:16800/jsonrpc";
+    
+    // Construct Aria2 JSON-RPC request payload
+    // Parameters: [ [uri1, uri2...], options ]
+    const uris = [directUrl];
+    const options: Record<string, string> = {};
+    if (filename) {
+      options["out"] = filename;
+    }
+
+    const params: any[] = [];
+    if (secret) {
+      params.push(`token:${secret}`);
+    }
+    params.push(uris);
+    params.push(options);
+
+    const payload = {
+      jsonrpc: "2.0",
+      id: `buzz-manager-${Date.now()}`,
+      method: "aria2.addUri",
+      params: params
+    };
+
+    try {
+      const response = await fetch(targetRpcUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.error) {
+          return res.status(400).json({ error: data.error.message || "Aria2 RPC Fehler" });
+        }
+        return res.json({ success: true, result: data.result });
+      } else {
+        const errText = await response.text();
+        return res.status(response.status).json({ error: `Motrix RPC antwortete mit Status ${response.status}: ${errText}` });
+      }
+    } catch (err: any) {
+      console.error("Motrix RPC request failed:", err);
+      return res.status(500).json({ error: `Verbindung zu Motrix unter ${targetRpcUrl} fehlgeschlagen. Ist Motrix geöffnet?` });
+    }
+  });
+
   // API route to get account information from Buzzheavier
   app.get("/api/buzz/account", async (req, res) => {
     const authHeader = req.headers.authorization;

@@ -8,6 +8,9 @@ export interface ScriptConfig {
   customDarkTheme: boolean; // Apply premium dark mode to buzzheavier
   hideAdblockWarning: boolean; // Hide pesky anti-adblock modals
   showNotification: boolean;  // Show Tampermonkey notification on action
+  sendToMotrix: boolean;      // Auto-send download to Motrix on page load
+  motrixRpcUrl: string;       // Custom Motrix RPC URL
+  motrixSecret: string;       // Custom Motrix RPC Secret
 }
 
 export interface BuzzLink {

@@ -27,7 +27,10 @@ import {
   FolderPlus,
   Edit,
   Move,
-  FolderOpen
+  FolderOpen,
+  Send,
+  Loader2,
+  Play
 } from "lucide-react";
 import { ScriptConfig, BuzzLink } from "./types";
 import { parseBuzzheavierUrl, generateUserscript } from "./utils";
@@ -91,7 +94,6 @@ export default function App() {
   const [isCopiedMotrixList, setIsCopiedMotrixList] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Userscript Configuration State
   const [scriptConfig, setScriptConfig] = useState<ScriptConfig>({
     scriptName: "Buzzheavier Direct Link & Motrix Helper",
     autoRedirect: false,
@@ -102,12 +104,17 @@ export default function App() {
     customDarkTheme: true,
     hideAdblockWarning: true,
     showNotification: true,
+    sendToMotrix: false,
+    motrixRpcUrl: "http://localhost:16800/jsonrpc",
+    motrixSecret: "",
   });
 
   const [copiedScript, setCopiedScript] = useState(false);
 
   // Online Token Resolve States
   const [resolvingIds, setResolvingIds] = useState<string[]>([]);
+  const [sendingMotrixIds, setSendingMotrixIds] = useState<string[]>([]);
+  const [isSendingAllMotrix, setIsSendingAllMotrix] = useState(false);
   const [resolvedLinksInfo, setResolvedLinksInfo] = useState<Record<string, { directUrl: string; filename: string; size: string }>>({});
   const [isHelperActive, setIsHelperActive] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -731,6 +738,72 @@ export default function App() {
     setTimeout(() => setIsCopiedMotrixList(false), 2000);
   };
 
+  // Sendet einen einzelnen Link an die lokale Motrix Instanz über das Backend
+  const sendSingleToMotrix = async (id: string, directUrl: string, filename: string) => {
+    if (sendingMotrixIds.includes(id)) return;
+    setSendingMotrixIds(prev => [...prev, id]);
+    try {
+      const response = await fetch("/api/motrix/add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          directUrl,
+          filename,
+          rpcUrl: scriptConfig.motrixRpcUrl,
+          secret: scriptConfig.motrixSecret
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        triggerNotification(`Erfolgreich an Motrix gesendet: ${filename}`);
+      } else {
+        triggerNotification(`Fehler: ${data.error || "Verbindung fehlgeschlagen"}`);
+      }
+    } catch (e) {
+      triggerNotification("Fehler beim Senden an Motrix!");
+    } finally {
+      setSendingMotrixIds(prev => prev.filter(i => i !== id));
+    }
+  };
+
+  // Sendet alle gelösten Links an Motrix
+  const sendAllToMotrix = async () => {
+    if (links.length === 0) return;
+    setIsSendingAllMotrix(true);
+    let successCount = 0;
+    for (const link of links) {
+      const info = resolvedLinksInfo[link.id];
+      const url = info?.directUrl || link.directUrl;
+      const fn = info?.filename || link.filename;
+      if (url) {
+        try {
+          const response = await fetch("/api/motrix/add", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              directUrl: url,
+              filename: fn,
+              rpcUrl: scriptConfig.motrixRpcUrl,
+              secret: scriptConfig.motrixSecret
+            })
+          });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            successCount++;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    triggerNotification(`${successCount} von ${links.length} Links an Motrix gesendet!`);
+    setIsSendingAllMotrix(false);
+  };
+
   // Download einer .txt Datei für den direkten Import in Motrix
   const handleDownloadTxtList = () => {
     if (links.length === 0) return;
@@ -1162,6 +1235,23 @@ export default function App() {
                               <span className="sm:hidden font-semibold">Link kopieren</span>
                             </button>
                             
+                            {/* An Motrix senden Button */}
+                            <button
+                              onClick={() => sendSingleToMotrix(link.id, displayDirectUrl, displayFilename)}
+                              disabled={sendingMotrixIds.includes(link.id)}
+                              title="An Motrix Next senden"
+                              className={`bg-slate-900 hover:bg-slate-800 text-slate-300 p-2 rounded-lg border border-slate-800 hover:border-slate-700 transition flex items-center justify-center text-xs gap-1.5 w-full sm:w-auto px-3 sm:px-2 ${
+                                sendingMotrixIds.includes(link.id) ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
+                            >
+                              {sendingMotrixIds.includes(link.id) ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                              ) : (
+                                <Send className="w-3.5 h-3.5 text-purple-400" />
+                              )}
+                              <span className="sm:hidden font-semibold">An Motrix Next</span>
+                            </button>
+                            
                             {/* Test-Download Button */}
                             <a
                               href={displayDirectUrl}
@@ -1260,6 +1350,21 @@ export default function App() {
                           return url.includes("v=") ? url : l.originalUrl;
                         }).join("\n")}
                       </pre>
+                      <button
+                        id="send-motrix-batch-btn"
+                        onClick={sendAllToMotrix}
+                        disabled={unresolvedCount > 0 || isSendingAllMotrix}
+                        className={`absolute right-24 top-2 px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition ${
+                          isSendingAllMotrix 
+                            ? "bg-slate-900 text-slate-500 border border-slate-800 cursor-not-allowed" 
+                            : unresolvedCount > 0
+                            ? "bg-slate-900 text-slate-500 border border-slate-800 cursor-not-allowed"
+                            : "bg-purple-600 hover:bg-purple-700 text-white border border-purple-500"
+                        }`}
+                      >
+                        {isSendingAllMotrix ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                        {isSendingAllMotrix ? "Sende..." : "An Motrix Next senden"}
+                      </button>
                       <button
                         id="copy-motrix-batch-btn"
                         onClick={handleCopyMotrixTextList}
@@ -1494,6 +1599,57 @@ export default function App() {
                           </span>
                         </div>
                       </label>
+                      
+                      {/* Motrix Next Integration Settings */}
+                      <div className="border-t border-slate-800/60 my-4 pt-4">
+                        <h4 className="text-xs font-bold text-sky-400 mb-3 flex items-center gap-1">
+                          <Cpu className="w-3.5 h-3.5" /> Motrix Next RPC Einstellungen
+                        </h4>
+                        
+                        <label className="flex items-start gap-3 cursor-pointer group mb-3">
+                          <input
+                            type="checkbox"
+                            checked={scriptConfig.sendToMotrix}
+                            onChange={(e) => setScriptConfig({ ...scriptConfig, sendToMotrix: e.target.checked })}
+                            className="mt-0.5 accent-sky-500 rounded text-sky-500"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-slate-200 group-hover:text-sky-300 transition">
+                              Downloads automatisch an Motrix Next senden (1-Klick)
+                            </span>
+                            <span className="block text-[11px] text-slate-400 leading-relaxed mt-0.5">
+                              Das Userscript sendet den resolved Link auf der Buzzheavier-Seite automatisch direkt an deine geöffnete Motrix Next App.
+                            </span>
+                          </div>
+                        </label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              Motrix RPC-Server URL
+                            </label>
+                            <input
+                              type="text"
+                              value={scriptConfig.motrixRpcUrl}
+                              onChange={(e) => setScriptConfig({ ...scriptConfig, motrixRpcUrl: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-sky-300 outline-none focus:border-sky-500 transition"
+                              placeholder="http://localhost:16800/jsonrpc"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              RPC Secret (optional)
+                            </label>
+                            <input
+                              type="password"
+                              value={scriptConfig.motrixSecret}
+                              onChange={(e) => setScriptConfig({ ...scriptConfig, motrixSecret: e.target.value })}
+                              className="w-full bg-slate-950 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-sky-300 outline-none focus:border-sky-500 transition"
+                              placeholder="Geheimschlüssel"
+                            />
+                          </div>
+                        </div>
+                      </div>
 
                     </div>
 

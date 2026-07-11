@@ -68,8 +68,7 @@
               if (response.status !== 200) {
                 logToApp("Fehler beim Laden der Landingpage: Status " + response.status);
                 return;
-              }
-              const html = response.responseText;
+                       const html = response.responseText;
               
               // Parse response HTML with DOMParser
               const parser = new DOMParser();
@@ -79,10 +78,10 @@
               let filename = "";
               const h1 = doc.querySelector('h1') || doc.querySelector('h2') || doc.querySelector('title');
               if (h1) {
-                filename = h1.textContent.replace(/\s*-\s*Buzzheavier/i, "").trim();
+                filename = h1.textContent.replace(/s*-s*Buzzheavier/i, "").trim();
               }
               let size = "Unbekannt";
-              const sizeMatch = doc.body.textContent.match(/(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i);
+              const sizeMatch = doc.body.textContent.match(/(d+(?:.d+)?s*(?:KB|MB|GB|B))/i);
               if (sizeMatch) size = sizeMatch[1];
               
               logToApp("Datei-Details extrahiert (DOM): Name=" + filename + ", Größe=" + size);
@@ -98,7 +97,7 @@
               const copyBtn = doc.querySelector('[onclick*="copyDownloadLink"]');
               if (copyBtn) {
                 const onclick = copyBtn.getAttribute('onclick') || "";
-                const match = onclick.match(/copyDownloadLink\(['"]([^'"]+)['"]\)/);
+                const match = onclick.match(/copyDownloadLink(['"]([^'"]+)['"])/);
                 if (match) copyPath = match[1];
               }
 
@@ -204,9 +203,9 @@
       }
     });
     return;
-  }
 
-  // Konfigurationen
+
+  // Konfigurationen vom 2026-07-11
   const CONFIG = {
     autoRedirect: false,
     autoClick: true,
@@ -215,7 +214,10 @@
     embedPlayer: true,
     customDarkTheme: true,
     hideAdblockWarning: true,
-    showNotification: true
+    showNotification: true,
+    sendToMotrix: false,
+    motrixRpcUrl: "http://localhost:16800/jsonrpc",
+    motrixSecret: ""
   };
 
   // Hilfsfunktion für Notifications
@@ -231,9 +233,72 @@
     }
   }
 
-  // 1. SOFORTIGER REDIRECT
+  // Hilfsfunktion zum Senden an Motrix Next (Aria2 JSON-RPC)
+  function sendToMotrixRpc(url, filename) {
+    const uris = [url];
+    const options = {};
+    if (filename) {
+      options["out"] = filename;
+    }
+    const params = [];
+    if (CONFIG.motrixSecret) {
+      params.push("token:" + CONFIG.motrixSecret);
+    }
+    params.push(uris);
+    params.push(options);
+
+    const payload = {
+      jsonrpc: "2.0",
+      id: "buzz-userscript-" + Date.now(),
+      method: "aria2.addUri",
+      params: params
+    };
+
+    if (typeof GM_xmlhttpRequest !== 'undefined') {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: CONFIG.motrixRpcUrl,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data: JSON.stringify(payload),
+        onload: function(res) {
+          try {
+            const r = JSON.parse(res.responseText);
+            if (r.error) {
+              notify("❌ Motrix Fehler: " + (r.error.message || "Aria2 RPC Error"));
+            } else {
+              notify("🚀 Erfolgreich an Motrix gesendet!");
+            }
+          } catch(e) {
+            notify("🚀 An Motrix gesendet!");
+          }
+        },
+        onerror: function(err) {
+          notify("❌ Motrix Verbindung fehlgeschlagen! Ist Motrix offen?");
+        }
+      });
+    } else {
+      fetch(CONFIG.motrixRpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(r => {
+        if (r.error) notify("❌ Motrix Fehler: " + r.error.message);
+        else notify("🚀 Erfolgreich an Motrix gesendet!");
+      })
+      .catch(() => {
+        notify("❌ Motrix Verbindung fehlgeschlagen!");
+      });
+    }
+  }
+
+  // 1. SOFORTIGER REDIRECT (Falls aktiviert, leitet direkt zur Download-Schnittstelle weiter)
   if (CONFIG.autoRedirect) {
     const pathParts = window.location.pathname.split('/');
+    // Finde ID im Pfad /f/ID oder /ID
     let id = "";
     if (pathParts[1] === "f" && pathParts[2]) {
       id = pathParts[2];
@@ -250,10 +315,12 @@
 
   // 2. DOM-INITIALISIERUNG
   document.addEventListener('DOMContentLoaded', () => {
+    // A. Dunkles Design anwenden
     if (CONFIG.customDarkTheme) {
       injectDarkTheme();
     }
 
+    // Finde Datei ID auf der aktuellen Seite
     const pathParts = window.location.pathname.split('/');
     let id = "";
     if (pathParts[1] === "f" && pathParts[2]) {
@@ -264,18 +331,22 @@
 
     if (!id) return;
 
+    // B. Anti-Adblocker Warnungen ausblenden
     if (CONFIG.hideAdblockWarning) {
       removeAdblockBlockers();
     }
 
+    // Extrahiere den direkten tokenisierten Download-Link (z. B. ts.buzzheavier.com/d/id?v=token)
     extractDirectLink(id);
   });
 
+  // Extrahiert den Direct-Link für Motrix
   async function extractDirectLink(id) {
     let token = "";
     let actionUrl = "https://buzzheavier.com/d/" + id;
     let foundUrl = "";
 
+    // A. HTMX hx-get Scraper (Sucht nach dem echten Download-Link via hx-get Attribut)
     try {
       const hxElement = document.querySelector('[hx-get*="/download"]') || 
                         document.querySelector('[hx-get*="/d/"]') ||
@@ -284,6 +355,7 @@
         const hxGet = hxElement.getAttribute('hx-get');
         if (hxGet) {
           const fetchUrl = hxGet.startsWith('http') ? hxGet : window.location.origin + hxGet;
+          console.log("[Buzzheavier Helper] HTMX hx-get gefunden: " + fetchUrl + ". Hole Direktlink...");
           
           const res = await fetch(fetchUrl, {
             headers: {
@@ -294,14 +366,16 @@
           
           const redirectUrl = res.headers.get("HX-Redirect");
           if (redirectUrl) {
+            console.log("[Buzzheavier Helper] HX-Redirect erfolgreich abgefangen: " + redirectUrl);
             foundUrl = redirectUrl;
           }
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("[Buzzheavier Helper] Fehler beim Laden des HTMX-Redirects:", e);
     }
 
+    // 1. Durchsuche alle Links (a) nach der Direct URL mit Token
     if (!foundUrl) {
       const allLinks = Array.from(document.querySelectorAll('a'));
       for (const a of allLinks) {
@@ -313,24 +387,71 @@
       }
     }
 
+    // 2. Durchsuche alle HTML-Attribute auf der Seite nach dem Link (z.B. in onclick oder data-*-Attributen)
     if (!foundUrl) {
-      const form = document.querySelector('form[action*="/d/"]');
-      if (form) {
-        const vInput = form.querySelector('input[name="v"]');
-        if (vInput && vInput.value) {
-          token = vInput.value;
+      const allElements = document.querySelectorAll('*');
+      for (const el of allElements) {
+        for (let i = 0; i < el.attributes.length; i++) {
+          const attr = el.attributes[i];
+          if (attr.value && attr.value.includes('buzzheavier.com') && attr.value.includes('v=')) {
+            const urlMatch = attr.value.match(/https?://[^s'"]+/);
+            if (urlMatch) {
+              foundUrl = urlMatch[0];
+              break;
+            }
+          }
+        }
+        if (foundUrl) break;
+      }
+    }
+
+    // 3. Durchsuche alle Script-Tags nach eingebetteten Link-Definitionen
+    if (!foundUrl) {
+      const scripts = document.querySelectorAll('script');
+      for (const scr of scripts) {
+        const content = scr.textContent || '';
+        const scriptMatch = content.match(/https?://(?:ts.)?buzzheavier.com/d/[a-zA-Z0-9_-]+?v=[a-zA-Z0-9_=-]+/i);
+        if (scriptMatch) {
+          foundUrl = scriptMatch[0];
+          break;
         }
       }
     }
 
+    // 4. Fallback auf die Formular- und Input-Felder
+    if (!foundUrl) {
+      const form = document.querySelector('form[action*="/d/"]') || 
+                   document.querySelector('form[action*="ts.buzzheavier.com"]') ||
+                   document.querySelector('form');
+                   
+      if (form) {
+        // Wenn das Formular ein verstecktes Token-Feld 'v' besitzt
+        const vInput = form.querySelector('input[name="v"]');
+        if (vInput && vInput.value) {
+          token = vInput.value;
+          const formAction = form.getAttribute('action') || '';
+          if (formAction.startsWith('http')) {
+            actionUrl = formAction;
+          } else if (formAction.startsWith('/')) {
+            actionUrl = window.location.origin + formAction;
+          } else {
+            actionUrl = "https://ts.buzzheavier.com/d/" + id;
+          }
+        }
+      }
+    }
+
+    // Baue den finalen, direkt downloadbaren Link zusammen
     let finalDirectUrl = foundUrl ? foundUrl : (token ? `${actionUrl}?v=${token}` : `https://ts.buzzheavier.com/d/${id}`);
 
+    // Normalisierung: Wenn ein v= Token vorhanden ist, erzwinge immer ts.buzzheavier.com
     if (finalDirectUrl.indexOf("v=") !== -1) {
       if (finalDirectUrl.indexOf("ts.buzzheavier.com") === -1) {
         finalDirectUrl = finalDirectUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
       }
     }
 
+    // C. Automatisch in die Zwischenablage kopieren (Perfekt für Motrix)
     if (CONFIG.copyToClipboard) {
       try {
         if (typeof GM_setClipboard !== 'undefined') {
@@ -339,77 +460,303 @@
           navigator.clipboard.writeText(finalDirectUrl);
         }
         notify("Direktlink automatisch für Motrix kopiert!");
-      } catch (e) {}
+      } catch (e) {
+        console.error("Clipboard copy failed:", e);
+      }
     }
 
+    // C2. Automatisch an Motrix Next senden
+    if (CONFIG.sendToMotrix) {
+      try {
+        sendToMotrixRpc(finalDirectUrl, fn);
+      } catch (e) {
+        console.error("Auto-send to Motrix failed:", e);
+      }
+    }
+
+    // Rückmeldung an die Converter-Webseite senden (falls vorhanden)
     if (targetWin.opener) {
       try {
+        // Versuchen, Dateiname und Größe aus dem DOM zu lesen
         let fn = "";
         const h1 = document.querySelector('h1') || document.querySelector('h2');
-        if (h1) fn = h1.innerText.replace(/\s*-\s*Buzzheavier/i, "").trim();
+        if (h1) {
+          fn = h1.innerText.replace(/<[^>]*>/g, "").replace(/s*-s*Buzzheavier/i, "").trim();
+        }
+        if (!fn) {
+          const titleTag = document.querySelector('title');
+          if (titleTag) {
+            fn = titleTag.innerText.replace(/s*-s*Buzzheavier/i, "").trim();
+          }
+        }
+        if (!fn) fn = "buzz_file_" + id;
+
         let sz = "Unbekannt";
-        const sizeMatch = document.body.innerText.match(/(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i);
+        const sizeMatch = document.body.innerText.match(/(d+(?:.d+)?s*(?:KB|MB|GB|B))/i);
         if (sizeMatch) sz = sizeMatch[1];
 
         targetWin.opener.postMessage({
           type: "BUZZ_RESOLVED",
           id: id,
           directUrl: finalDirectUrl,
-          filename: fn || "buzz_file_" + id,
+          filename: fn,
           size: sz
         }, "*");
 
+        // Tab nach erfolgreicher Übertragung schließen, falls im Batch-Modus geöffnet
         if (targetWin.name === "buzz_batch_resolve_" + id || targetWin.location.search.includes("batch=1")) {
-          setTimeout(() => { targetWin.close(); }, 800);
+          setTimeout(() => {
+            targetWin.close();
+          }, 800);
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error("Fehler beim Senden an opener:", err);
+      }
     }
 
+    // D. Streaming-Player einbetten
     if (CONFIG.embedPlayer) {
       addStreamingPlayer(finalDirectUrl);
     }
 
+    // E. Schickes GUI-Panel auf Buzzheavier anzeigen
     createHelperPanel(finalDirectUrl);
 
+    // F. Auto-Click der Download-Schaltfläche nach Verzögerung
     if (CONFIG.autoClick) {
       setTimeout(() => {
-        const btn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
-        if (btn) btn.click();
+        const btn = document.querySelector('input[type="submit"]') || 
+                    document.querySelector('button[type="submit"]') ||
+                    document.querySelector('.btn-download');
+        if (btn) {
+          btn.click();
+          notify("Download gestartet!");
+        }
       }, CONFIG.autoClickDelay * 1000);
     }
   }
 
+  // Erstellt ein schwebendes, modernes Panel für schnellen Kopier-Zugriff
   function createHelperPanel(directUrl) {
     const panel = document.createElement('div');
     panel.id = 'motrix-helper-panel';
-    panel.style.cssText = 'position: fixed; bottom: 24px; right: 24px; background: linear-gradient(145deg, #1e293b, #0f172a); border: 1.5px solid #38bdf8; border-radius: 12px; padding: 16px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); z-index: 999999; width: 320px; color: #f8fafc; font-family: system-ui, sans-serif;';
+    panel.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      border: 1.5px solid #38bdf8;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5), 0 10px 10px -5px rgba(0,0,0,0.4);
+      z-index: 999999;
+      width: 320px;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+    `;
+
     panel.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-        <span style="font-weight: 700; color: #38bdf8; font-size: 14px;">⚡ Motrix & Direct Downloader</span>
+        <span style="font-weight: 700; color: #38bdf8; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+          ⚡ Motrix & Direct Downloader
+        </span>
         <button id="close-helper-panel" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:16px;">&times;</button>
       </div>
-      <input type="text" readonly value="${directUrl}" style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#38bdf8; padding:6px 10px; font-size:10px; font-family:monospace; margin-bottom:12px; outline:none;" />
-      <div style="display:flex; gap:8px;">
-        <button id="btn-copy-helper" style="flex:1; background:#0284c7; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer;">📋 Link kopieren</button>
-        <a href="${directUrl}" style="background:#1e293b; border:1px solid #475569; color:white; border-radius:6px; padding:8px; font-size:11px; text-decoration:none; text-align:center; font-weight:600; flex:1;">📥 Download</a>
-      </div>`;
+      <p style="font-size: 11px; color: #cbd5e1; margin: 0 0 10px 0; line-height: 1.4;">
+        Dieser Link enthält das aktive Sicherheitstoken und kann direkt in <strong>Motrix</strong>, <strong>JDownloader</strong> oder <strong>IDM</strong> eingefügt werden.
+      </p>
+      <input type="text" readonly value="\${directUrl}" style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#38bdf8; padding:6px 10px; font-size:10px; font-family:monospace; margin-bottom:12px; outline:none;" />
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; gap:8px;">
+          <button id="btn-copy-helper" style="flex:1; background:#0284c7; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px;">
+            📋 Kopieren
+          </button>
+          <button id="btn-motrix-helper" style="flex:1; background:#8b5cf6; border:none; color:white; border-radius:6px; padding:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px;">
+            🚀 Motrix Next
+          </button>
+        </div>
+        <a href="\${directUrl}" style="width:100%; background:#1e293b; border:1px solid #475569; color:white; border-radius:6px; padding:8px; font-size:11px; text-decoration:none; text-align:center; font-weight:600; display:block;">
+          📥 Direkt downloaden
+        </a>
+      </div>
+    `;
+
     document.body.appendChild(panel);
 
-    document.getElementById('close-helper-panel').addEventListener('click', () => { panel.remove(); });
+    // Event Listeners
+    document.getElementById('close-helper-panel').addEventListener('click', () => {
+      panel.remove();
+    });
+
     const copyBtn = document.getElementById('btn-copy-helper');
     copyBtn.addEventListener('click', () => {
-      if (typeof GM_setClipboard !== 'undefined') { GM_setClipboard(directUrl); } else { navigator.clipboard.writeText(directUrl); }
+      if (typeof GM_setClipboard !== 'undefined') {
+        GM_setClipboard(directUrl);
+      } else {
+        navigator.clipboard.writeText(directUrl);
+      }
       copyBtn.innerText = "✅ Kopiert!";
-      setTimeout(() => { copyBtn.innerText = "📋 Link kopieren"; }, 2000);
+      copyBtn.style.background = "#22c55e";
+      notify("Direkter CDN-Downloadlink für Motrix kopiert!");
+      setTimeout(() => {
+        copyBtn.innerText = "📋 Link kopieren";
+        copyBtn.style.background = "#0284c7";
+      }, 2000);
     });
+
+    const motrixBtn = document.getElementById('btn-motrix-helper');
+    if (motrixBtn) {
+      motrixBtn.addEventListener('click', () => {
+        let fn = "";
+        const h1 = document.querySelector('h1') || document.querySelector('h2') || document.querySelector('title');
+        if (h1) fn = h1.textContent.replace(/\s*-\s*Buzzheavier/i, "").trim();
+        if (!fn) fn = "buzz_file";
+        
+        sendToMotrixRpc(directUrl, fn);
+        motrixBtn.innerText = "🚀 Gesendet!";
+        motrixBtn.style.background = "#22c55e";
+        setTimeout(() => {
+          motrixBtn.innerText = "🚀 Motrix Next";
+          motrixBtn.style.background = "#8b5cf6";
+        }, 2000);
+      });
+    }
   }
 
+  // Premium Dark Theme Injector
   function injectDarkTheme() {
     const style = document.createElement('style');
-    style.innerHTML = 'body { background-color: #0b0f19 !important; color: #e2e8f0 !important; }';
+    style.id = 'buzz-dark-theme';
+    style.innerHTML = `
+      body {
+        background-color: #0b0f19 !important;
+        color: #e2e8f0 !important;
+        font-family: system-ui, -apple-system, sans-serif !important;
+      }
+      .card, .panel, div[class*="bg-white"], .bg-white {
+        background-color: #111827 !important;
+        border-color: #1f2937 !important;
+        color: #f1f5f9 !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+      }
+      table, th, td {
+        border-color: #1f2937 !important;
+        color: #cbd5e1 !important;
+      }
+      th {
+        background-color: #1e293b !important;
+        color: #38bdf8 !important;
+      }
+      a {
+        color: #0ea5e9 !important;
+      }
+      a:hover {
+        color: #38bdf8 !important;
+      }
+      button, .btn, input[type="submit"] {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+        border: none !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        transition: transform 0.2s, opacity 0.2s !important;
+      }
+      button:hover, .btn:hover, input[type="submit"]:hover {
+        opacity: 0.9 !important;
+        transform: translateY(-1px) !important;
+      }
+      input, select, textarea {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border-color: #334155 !important;
+      }
+      iframe[src*="google"], div[class*="ad-"], div[id*="ad-"], .adsbygoogle {
+        display: none !important;
+      }
+    `;
     document.head.appendChild(style);
   }
 
-  function removeAdblockBlockers() {}
-  function addStreamingPlayer(directUrl) {}
+  // Anti-Adblocker Remover
+  function removeAdblockBlockers() {
+    const adblockKeywords = ['adblock', 'ad-block', 'adblocker', 'anti-ad'];
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node;
+            const text = (el.innerText || el.textContent || '').toLowerCase();
+            const hasKeyword = adblockKeywords.some(kw => text.includes(kw));
+            
+            const style = window.getComputedStyle(el);
+            const isModal = (style.position === 'fixed' || style.position === 'absolute') && 
+                            parseInt(style.zIndex) > 50;
+            
+            if (isModal && hasKeyword) {
+              el.remove();
+              document.body.style.overflow = 'auto';
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // Audio/Video Player Einbettung
+  function addStreamingPlayer(directUrl) {
+    const titleText = document.title || "";
+    const pageText = document.body.innerText || "";
+    const combined = (titleText + " " + pageText).toLowerCase();
+
+    const videoExtensions = ['.mp4', '.mkv', '.webm', '.avi', '.mov'];
+    const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
+
+    const isVideo = videoExtensions.some(ext => combined.includes(ext));
+    const isAudio = audioExtensions.some(ext => combined.includes(ext));
+
+    if (!isVideo && !isAudio) return;
+
+    const playerContainer = document.createElement('div');
+    playerContainer.id = 'buzz-streaming-player';
+    playerContainer.style.cssText = `
+      margin: 20px auto;
+      max-width: 760px;
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    `;
+
+    const titleH3 = document.createElement('h3');
+    titleH3.innerText = isVideo ? "🎬 Sofortige Video-Vorschau" : "🎵 Sofortige Audio-Vorschau";
+    titleH3.style.cssText = "color: #38bdf8; margin: 0 0 12px 0; font-size: 15px; font-weight: 600;";
+    playerContainer.appendChild(titleH3);
+
+    if (isVideo) {
+      const video = document.createElement('video');
+      video.src = directUrl;
+      video.controls = true;
+      video.preload = "metadata";
+      video.style.cssText = "width: 100%; max-height: 480px; border-radius: 8px; background: #000;";
+      playerContainer.appendChild(video);
+    } else if (isAudio) {
+      const audio = document.createElement('audio');
+      audio.src = directUrl;
+      audio.controls = true;
+      audio.preload = "metadata";
+      audio.style.cssText = "width: 100%; margin-top: 4px;";
+      playerContainer.appendChild(audio);
+    }
+
+    const insertionPoint = document.querySelector('table, form, .card') || document.body.firstChild;
+    if (insertionPoint) {
+      insertionPoint.parentNode.insertBefore(playerContainer, insertionPoint);
+    }
+  }
+
 })();
