@@ -6,8 +6,10 @@
 // @author       Buzzheavier Script Builder
 // @match        *://buzzheavier.com/*
 // @match        *://*.buzzheavier.com/*
-// @match        http://localhost:*/*
-// @match        http://127.0.0.1:*/*
+// @match        http://localhost/*
+// @match        http://127.0.0.1/*
+// @match        http://localhost:3000/*
+// @match        http://127.0.0.1:3000/*
 // @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
