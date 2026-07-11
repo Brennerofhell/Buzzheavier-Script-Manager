@@ -342,7 +342,7 @@
       } catch (e) {}
     }
 
-    if (window.opener) {
+    if (targetWin.opener) {
       try {
         let fn = "";
         const h1 = document.querySelector('h1') || document.querySelector('h2');
@@ -351,7 +351,7 @@
         const sizeMatch = document.body.innerText.match(/(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i);
         if (sizeMatch) sz = sizeMatch[1];
 
-        window.opener.postMessage({
+        targetWin.opener.postMessage({
           type: "BUZZ_RESOLVED",
           id: id,
           directUrl: finalDirectUrl,
@@ -359,8 +359,8 @@
           size: sz
         }, "*");
 
-        if (window.name === "buzz_batch_resolve_" + id || window.location.search.includes("batch=1")) {
-          setTimeout(() => { window.close(); }, 800);
+        if (targetWin.name === "buzz_batch_resolve_" + id || targetWin.location.search.includes("batch=1")) {
+          setTimeout(() => { targetWin.close(); }, 800);
         }
       } catch (err) {}
     }

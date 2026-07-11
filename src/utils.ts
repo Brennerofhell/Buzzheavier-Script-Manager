@@ -526,7 +526,7 @@ export function generateUserscript(config: ScriptConfig): string {
     }
 
     // Rückmeldung an die Converter-Webseite senden (falls vorhanden)
-    if (window.opener) {
+    if (targetWin.opener) {
       try {
         // Versuchen, Dateiname und Größe aus dem DOM zu lesen
         let fn = "";
@@ -546,7 +546,7 @@ export function generateUserscript(config: ScriptConfig): string {
         const sizeMatch = document.body.innerText.match(/(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i);
         if (sizeMatch) sz = sizeMatch[1];
 
-        window.opener.postMessage({
+        targetWin.opener.postMessage({
           type: "BUZZ_RESOLVED",
           id: id,
           directUrl: finalDirectUrl,
@@ -555,9 +555,9 @@ export function generateUserscript(config: ScriptConfig): string {
         }, "*");
 
         // Tab nach erfolgreicher Übertragung schließen, falls im Batch-Modus geöffnet
-        if (window.name === "buzz_batch_resolve_" + id || window.location.search.includes("batch=1")) {
+        if (targetWin.name === "buzz_batch_resolve_" + id || targetWin.location.search.includes("batch=1")) {
           setTimeout(() => {
-            window.close();
+            targetWin.close();
           }, 800);
         }
       } catch (err) {
