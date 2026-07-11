@@ -150,9 +150,16 @@ export function generateUserscript(config: ScriptConfig): string {
 
   const targetWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
+  function logToApp(msg) {
+    console.log("[Buzzheavier Helper] " + msg);
+    try {
+      targetWin.postMessage({ type: "BUZZ_LOG", message: msg }, "*");
+    } catch(e) {}
+  }
+
   if (window.location.hostname !== 'buzzheavier.com' && !window.location.hostname.endsWith('.buzzheavier.com')) {
     // Aktiv auf localhost / Steuerungsseite
-    console.log("[Buzzheavier Helper] Aktiv auf Steuerungsseite: " + window.location.origin);
+    logToApp("Aktiv auf Steuerungsseite: " + window.location.origin);
     
     // Melde Bereitschaft an die App
     setInterval(() => {
@@ -164,7 +171,7 @@ export function generateUserscript(config: ScriptConfig): string {
       if (event.data && event.data.type === "REQUEST_BUZZ_RESOLVE") {
         const { id, url } = event.data;
         if (id) {
-          console.log("[Buzzheavier Helper] Hintergrund-Auflösung gestartet für ID: " + id);
+          logToApp("Hintergrund-Auflösung gestartet für ID: " + id);
           const targetUrl = url || "https://buzzheavier.com/f/" + id;
           
           GM_xmlhttpRequest({
@@ -174,9 +181,16 @@ export function generateUserscript(config: ScriptConfig): string {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
             },
+            onerror: function(err) {
+              logToApp("Netzwerkfehler beim Laden der Landingpage (" + id + "): " + JSON.stringify(err));
+            },
+            ontimeout: function() {
+              logToApp("Timeout beim Laden der Landingpage (" + id + ")");
+            },
             onload: function(response) {
+              logToApp("Landingpage geladen. Status: " + response.status + " für ID: " + id);
               if (response.status !== 200) {
-                console.error("[Buzzheavier Helper] Fehler beim Laden der Landingpage: Status " + response.status);
+                logToApp("Fehler beim Laden der Landingpage: Status " + response.status);
                 return;
               }
               const html = response.responseText;
@@ -193,12 +207,15 @@ export function generateUserscript(config: ScriptConfig): string {
               const sizeMatch = html.match(/(\\d+(?:\\.\\d+)?\\s*(?:KB|MB|GB|B))/i);
               if (sizeMatch) size = sizeMatch[1];
               
+              logToApp("Datei-Details extrahiert: Name=" + filename + ", Größe=" + size);
+
               const hxGetMatch = html.match(/hx-get=["']([^"']+)["']/i);
               const copyMatch = html.match(/copyDownloadLink\\(["']([^"']+)["']\\)/i);
               const hxPath = hxGetMatch ? hxGetMatch[1] : (copyMatch ? copyMatch[1] : "");
               
               if (hxPath) {
                 const fetchUrl = hxPath.startsWith("http") ? hxPath : "https://buzzheavier.com" + hxPath;
+                logToApp("HTMX Download-Pfad gefunden: " + hxPath + ". Sende Sub-Request...");
                 GM_xmlhttpRequest({
                   method: "GET",
                   url: fetchUrl,
@@ -206,7 +223,11 @@ export function generateUserscript(config: ScriptConfig): string {
                     "HX-Request": "true",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                   },
+                  onerror: function(err) {
+                    logToApp("Netzwerkfehler im Sub-Request: " + JSON.stringify(err));
+                  },
                   onload: function(subRes) {
+                    logToApp("Sub-Request Antwort erhalten. Status: " + subRes.status);
                     const headersStr = subRes.responseHeaders || "";
                     const headers = {};
                     headersStr.split("\\r\\n").forEach(line => {
@@ -225,6 +246,7 @@ export function generateUserscript(config: ScriptConfig): string {
                     }
                     
                     if (directUrl) {
+                      logToApp("Erfolgreich Direktlink extrahiert: " + directUrl);
                       if (directUrl.includes("v=") && !directUrl.includes("ts.buzzheavier.com")) {
                         directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
                       }
@@ -236,15 +258,17 @@ export function generateUserscript(config: ScriptConfig): string {
                         size: size
                       }, "*");
                     } else {
-                      console.error("[Buzzheavier Helper] Keine Weiterleitung in Headern gefunden.");
+                      logToApp("Warnung: Keine Weiterleitung in Headern gefunden. Antwort-Body: " + subRes.responseText.substring(0, 100));
                     }
                   }
                 });
               } else {
+                logToApp("Kein HTMX-Pfad gefunden. Versuche direkten HTML-Regex Match...");
                 const tokenUrlRegex = /https?:\\/\\/(?:ts\\.)?buzzheavier\\.com\\/d\\/[a-zA-Z0-9_-]+\\?v=[a-zA-Z0-9_=-]+/i;
                 const matchTokenUrl = html.match(tokenUrlRegex);
                 if (matchTokenUrl) {
                   let directUrl = matchTokenUrl[0];
+                  logToApp("Regex-Direktlink gefunden: " + directUrl);
                   if (!directUrl.includes("ts.buzzheavier.com")) {
                     directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
                   }
@@ -255,6 +279,8 @@ export function generateUserscript(config: ScriptConfig): string {
                     filename: filename || ("buzz_file_" + id),
                     size: size
                   }, "*");
+                } else {
+                  logToApp("Fehler: Kein direkt downloadbarer Link oder Token in der Seite gefunden.");
                 }
               }
             }

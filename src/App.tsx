@@ -110,6 +110,7 @@ export default function App() {
   const [resolvingIds, setResolvingIds] = useState<string[]>([]);
   const [resolvedLinksInfo, setResolvedLinksInfo] = useState<Record<string, { directUrl: string; filename: string; size: string }>>({});
   const [isHelperActive, setIsHelperActive] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
   // File Uploader States
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -597,6 +598,9 @@ export default function App() {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === "BUZZ_HELPER_READY") {
         setIsHelperActive(true);
+      }
+      if (event.data && event.data.type === "BUZZ_LOG") {
+        setDebugLogs(prev => [...prev.slice(-99), `[Tampermonkey] ${event.data.message}`]);
       }
       if (event.data && event.data.type === "BUZZ_RESOLVED") {
         const { id, directUrl, filename, size } = event.data;
@@ -1260,6 +1264,34 @@ export default function App() {
                         {isCopiedMotrixList ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                         {unresolvedCount > 0 ? "Warten..." : "Kopieren"}
                       </button>
+                    </div>
+
+                    {/* Debug Logs Panel */}
+                    <div className="mt-4 border-t border-slate-850 pt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Tampermonkey Debug-Konsole
+                        </span>
+                        {debugLogs.length > 0 && (
+                          <button
+                            onClick={() => setDebugLogs([])}
+                            className="text-[9px] text-slate-500 hover:text-slate-300 font-bold"
+                          >
+                            Logs leeren
+                          </button>
+                        )}
+                      </div>
+                      <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-900 max-h-32 overflow-y-auto text-[9px] font-mono text-slate-450 leading-normal space-y-1">
+                        {debugLogs.length === 0 ? (
+                          <span className="text-slate-600 italic">Keine Log-Ausgaben vorhanden. Warte auf Skript-Bereitschaft...</span>
+                        ) : (
+                          debugLogs.map((log, idx) => (
+                            <div key={idx} className="border-b border-slate-900/50 pb-0.5 last:border-0 truncate">
+                              {log}
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
