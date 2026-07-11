@@ -1211,10 +1211,21 @@ export default function App() {
                     </p>
 
                     {unresolvedCount > 0 && (
-                      <div className="mb-3 bg-amber-500/5 border border-amber-500/25 text-amber-300 p-3 rounded-lg text-[11px] leading-relaxed flex items-start gap-2 shadow-inner">
-                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>Achtung:</strong> Es werden noch {unresolvedCount} Link(s) im Hintergrund aufgelöst. Bitte warte einen Moment, bis die Anzeige oben grün wird, um <strong>403-Fehler</strong> beim Herunterladen in Motrix zu vermeiden!
+                      <div className="mb-3 bg-amber-500/5 border border-amber-500/25 text-amber-300 p-3 rounded-lg text-[11px] leading-relaxed flex flex-col gap-2 shadow-inner">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Achtung:</strong> Es werden noch {unresolvedCount} Link(s) aufgelöst. Falls Chrome oder Cloudflare die Hintergrund-Auflösung blockiert, kannst du die Links über Tab-Popups erzwingen:
+                          </div>
+                        </div>
+                        <div className="pl-6">
+                          <button
+                            onClick={resolveAllWithTampermonkey}
+                            className="bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-bold px-3 py-1 rounded text-[10px] transition flex items-center gap-1 shadow"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            Erzwinge Auflösung via Tab-Popups ({unresolvedCount} Links)
+                          </button>
                         </div>
                       </div>
                     )}
