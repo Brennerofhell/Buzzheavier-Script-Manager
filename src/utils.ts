@@ -194,30 +194,44 @@ export function generateUserscript(config: ScriptConfig): string {
               if (response.status !== 200) {
                 logToApp("Fehler beim Laden der Landingpage: Status " + response.status);
                 return;
-              }
-              const html = response.responseText;
+                       const html = response.responseText;
               
+              // Parse response HTML with DOMParser
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, "text/html");
+
               // Details extrahieren
               let filename = "";
-              const h1Match = html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i) || 
-                              html.match(/<h2[^>]*>([\\s\\S]*?)<\\/h2>/i) ||
-                              html.match(/<title>([\\s\\S]*?)<\\/title>/i);
-              if (h1Match) {
-                filename = h1Match[1].replace(/<[^>]*>/g, "").replace(/\\s*-\\s*Buzzheavier/i, "").trim();
+              const h1 = doc.querySelector('h1') || doc.querySelector('h2') || doc.querySelector('title');
+              if (h1) {
+                filename = h1.textContent.replace(/\s*-\s*Buzzheavier/i, "").trim();
               }
               let size = "Unbekannt";
-              const sizeMatch = html.match(/(\\d+(?:\\.\\d+)?\\s*(?:KB|MB|GB|B))/i);
+              const sizeMatch = doc.body.textContent.match(/(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i);
               if (sizeMatch) size = sizeMatch[1];
               
-              logToApp("Datei-Details extrahiert: Name=" + filename + ", Größe=" + size);
+              logToApp("Datei-Details extrahiert (DOM): Name=" + filename + ", Größe=" + size);
 
-              const hxGetMatch = html.match(/hx-get=["']([^"']+)["']/i);
-              const copyMatch = html.match(/copyDownloadLink\\(["']([^"']+)["']\\)/i);
-              const hxPath = hxGetMatch ? hxGetMatch[1] : (copyMatch ? copyMatch[1] : "");
+              // 1. Suche nach HTMX-Get-Pfad
+              const hxElement = doc.querySelector('[hx-get*="/download"]') || 
+                                doc.querySelector('[hx-get*="/d/"]') ||
+                                doc.querySelector('[hx-get]');
+              const hxGet = hxElement ? hxElement.getAttribute('hx-get') : null;
+              
+              // 2. Suche nach copyDownloadLink onclick-Funktion
+              let copyPath = "";
+              const copyBtn = doc.querySelector('[onclick*="copyDownloadLink"]');
+              if (copyBtn) {
+                const onclick = copyBtn.getAttribute('onclick') || "";
+                const match = onclick.match(/copyDownloadLink\(['"]([^'"]+)['"]\)/);
+                if (match) copyPath = match[1];
+              }
+
+              const hxPath = hxGet || copyPath;
               
               if (hxPath) {
                 const fetchUrl = hxPath.startsWith("http") ? hxPath : "https://buzzheavier.com" + hxPath;
-                logToApp("HTMX Download-Pfad gefunden: " + hxPath + ". Sende Sub-Request...");
+                logToApp("HTMX Download-Pfad im DOM gefunden: " + hxPath + ". Sende Sub-Request...");
                 GM_xmlhttpRequest({
                   method: "GET",
                   url: fetchUrl,
@@ -271,13 +285,32 @@ export function generateUserscript(config: ScriptConfig): string {
                   }
                 });
               } else {
-                logToApp("Kein HTMX-Pfad gefunden. Versuche direkten HTML-Regex Match...");
-                const tokenUrlRegex = /https?:\\/\\/(?:ts\\.)?buzzheavier\\.com\\/d\\/[a-zA-Z0-9_-]+\\?v=[a-zA-Z0-9_=-]+/i;
-                const matchTokenUrl = html.match(tokenUrlRegex);
-                if (matchTokenUrl) {
-                  let directUrl = matchTokenUrl[0];
-                  logToApp("Regex-Direktlink gefunden: " + directUrl);
-                  if (!directUrl.includes("ts.buzzheavier.com")) {
+                logToApp("Kein HTMX-Pfad im DOM gefunden. Versuche Direkt-Link im DOM...");
+                
+                // Formular-Token auswerten
+                let token = "";
+                const form = doc.querySelector('form[action*="/d/"]') || doc.querySelector('form');
+                if (form) {
+                  const vInput = form.querySelector('input[name="v"]');
+                  if (vInput && vInput.value) {
+                    token = vInput.value;
+                  }
+                }
+                
+                // Direkt-A-Tag auswerten
+                const dLink = doc.querySelector('a[href*="/d/"]') || 
+                              doc.querySelector('a[href*="ts.buzzheavier.com"]') ||
+                              doc.querySelector('a[href*="v="]');
+                let foundUrl = "";
+                if (dLink) {
+                  foundUrl = dLink.getAttribute('href') || "";
+                }
+                
+                let directUrl = foundUrl ? foundUrl : (token ? ("https://ts.buzzheavier.com/d/" + id + "?v=" + token) : "");
+                
+                if (directUrl) {
+                  logToApp("Direktlink aus DOM extrahiert: " + directUrl);
+                  if (directUrl.includes("v=") && !directUrl.includes("ts.buzzheavier.com")) {
                     directUrl = directUrl.replace("buzzheavier.com", "ts.buzzheavier.com");
                   }
                   targetWin.postMessage({
@@ -288,7 +321,7 @@ export function generateUserscript(config: ScriptConfig): string {
                     size: size
                   }, "*");
                 } else {
-                  logToApp("Fehler: Kein direkt downloadbarer Link oder Token in der Seite gefunden.");
+                  logToApp("Kein Download-Pfad oder Direkt-Downloadlink im DOM gefunden.");
                 }
               }
             }
@@ -297,7 +330,7 @@ export function generateUserscript(config: ScriptConfig): string {
       }
     });
     return;
-  }
+
 
   // Konfigurationen vom ${dateStr}
   const CONFIG = {
