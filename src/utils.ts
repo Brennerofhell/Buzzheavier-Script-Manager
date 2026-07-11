@@ -228,16 +228,22 @@ export function generateUserscript(config: ScriptConfig): string {
                   },
                   onload: function(subRes) {
                     logToApp("Sub-Request Antwort erhalten. Status: " + subRes.status);
-                    const headersStr = subRes.responseHeaders || "";
-                    const headers = {};
-                    headersStr.split("\\r\\n").forEach(line => {
-                      const parts = line.split(": ");
-                      if (parts[0]) {
-                        headers[parts[0].toLowerCase()] = parts.slice(1).join(": ");
-                      }
-                    });
                     
-                    let directUrl = headers["hx-redirect"] || headers["hx-refresh"];
+                    let directUrl = subRes.finalUrl || subRes.finalURL;
+                    
+                    if (!directUrl) {
+                      const headersStr = subRes.responseHeaders || "";
+                      const headers = {};
+                      headersStr.split("\\r\\n").forEach(line => {
+                        const parts = line.split(": ");
+                        if (parts[0]) {
+                          headers[parts[0].toLowerCase()] = parts.slice(1).join(": ");
+                        }
+                      });
+                      
+                      directUrl = headers["hx-redirect"] || headers["hx-refresh"];
+                    }
+                    
                     if (!directUrl && subRes.responseText) {
                       try {
                         const parsed = JSON.parse(subRes.responseText);
