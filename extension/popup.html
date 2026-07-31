@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 320px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0b0d17;
+      color: #f3f4f6;
+      margin: 0;
+      padding: 16px;
+    }
+    h2 {
+      font-size: 16px;
+      margin-top: 0;
+      color: #c4b5fd;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .box {
+      background: rgba(22, 27, 46, 0.8);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+    label {
+      font-size: 12px;
+      color: #9ca3af;
+      display: block;
+      margin-bottom: 4px;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: white;
+      font-size: 13px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    #result {
+      margin-top: 10px;
+      font-size: 12px;
+      word-break: break-all;
+      color: #10b981;
+    }
+  </style>
+</head>
+<body>
+  <h2>⚡ Buzzheavier Companion</h2>
+  <div class="box">
+    <label>Direktlink Extrahieren (ID/URL):</label>
+    <input type="text" id="link-input" placeholder="z. B. dr7u0u1a7edw">
+    <button id="extract-btn">Link Generieren</button>
+    <div id="result"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
