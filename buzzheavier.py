@@ -107,14 +107,24 @@ def upload_file(file_path, token=None, parent_id=None):
 
 def get_direct_download_info(url_or_id):
     """
-    Extracts the download URL and filename from a Buzzheavier URL or file ID.
+    Extracts the signed download URL and filename for JDownloader 2.
     """
     clean_id = url_or_id.strip()
+    token = None
+    if "t=" in clean_id:
+        match = re.search(r't=([^&]+)', clean_id)
+        if match:
+            token = match.group(1)
+
     if clean_id.startswith("http"):
         parsed = urllib.parse.urlparse(clean_id)
-        clean_id = parsed.path.strip("/").split("/")[-1]
+        clean_id = parsed.path.strip("/").split("/")[0]
 
-    direct_link = f"https://buzzheavier.com/{clean_id}"
+    if token:
+        direct_link = f"https://buzzheavier.com/{clean_id}/download?t={token}"
+    else:
+        direct_link = f"https://buzzheavier.com/{clean_id}/download"
+
     filename = f"{clean_id}.bin"
     return filename, direct_link
 
