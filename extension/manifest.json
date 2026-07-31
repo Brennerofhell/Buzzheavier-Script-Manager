@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Buzzheavier Companion",
+  "version": "1.0",
+  "description": "Browser Extension for Buzzheavier - Quick file upload & 1-click direct link extraction.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "permissions": [
+    "activeTab",
+    "clipboardWrite"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://buzzheavier.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
