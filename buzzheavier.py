@@ -107,14 +107,14 @@ def upload_file(file_path, token=None, parent_id=None):
 
 def get_direct_download_info(url_or_id):
     """
-    Extracts the direct download link and filename from a Buzzheavier URL or file ID.
+    Extracts the download URL and filename from a Buzzheavier URL or file ID.
     """
     clean_id = url_or_id.strip()
     if clean_id.startswith("http"):
         parsed = urllib.parse.urlparse(clean_id)
         clean_id = parsed.path.strip("/").split("/")[-1]
 
-    direct_link = f"https://dd.buzzheavier.com/f/{clean_id}"
+    direct_link = f"https://buzzheavier.com/{clean_id}"
     filename = f"{clean_id}.bin"
     return filename, direct_link
 
