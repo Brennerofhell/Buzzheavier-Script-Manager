@@ -109,31 +109,14 @@ def get_direct_download_info(url_or_id):
     """
     Extracts the direct download link and filename from a Buzzheavier URL or file ID.
     """
-    # Clean ID or URL input
     clean_id = url_or_id.strip()
     if clean_id.startswith("http"):
         parsed = urllib.parse.urlparse(clean_id)
-        clean_id = parsed.path.strip("/")
+        clean_id = parsed.path.strip("/").split("/")[-1]
 
-    clean_url = f"{WEB_BASE_URL}/{clean_id}"
-    dl_endpoint = f"{clean_url}/download"
-
-    headers = dict(HEADERS_BASE)
-    headers["HX-Request"] = "true"
-    headers["HX-Current-URL"] = clean_url
-    headers["Referer"] = clean_url
-
-    print(f"Resolving download link for ID/URL: {clean_id}...")
-    res_dl = requests.get(dl_endpoint, headers=headers, allow_redirects=False)
-
-    direct_link = res_dl.headers.get("hx-redirect") or res_dl.headers.get("Location")
-
-    if not direct_link and res_dl.status_code in (200, 204):
-        # Fallback to standard URL if hx-redirect is same page
-        direct_link = clean_url
-
+    direct_link = f"https://dd.buzzheavier.com/f/{clean_id}"
     filename = f"{clean_id}.bin"
-    return filename, direct_link or clean_url
+    return filename, direct_link
 
 
 def download_file(url_or_id, output_path=None):
